@@ -1,58 +1,266 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Mushroom Meadow Run</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <main class="game-shell" aria-label="Mushroom Meadow Run game">
-      <section class="hud" aria-live="polite">
-        <div class="brand">
-          <span class="logo" aria-hidden="true">🍄</span>
-          <div>
-            <h1>Mushroom Meadow Run</h1>
-            <p>Reach the flag, collect coins, and defeat bugs!</p>
-          </div>
-        </div>
-        <div class="stats">
-          <div class="stat health-stat">
-            <span>Health</span>
-            <div class="healthbar" aria-label="Player health">
-              <div id="healthFill"></div>
-            </div>
-          </div>
-          <div class="stat"><span>Level</span><strong id="levelText">1</strong></div>
-          <div class="stat"><span>Score</span><strong id="scoreText">0</strong></div>
-          <div class="stat"><span>Coins</span><strong id="coinText">0</strong></div>
-          <div class="stat"><span>Power</span><strong id="powerText">-</strong></div>
-        </div>
-      </section>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-      <div class="stage-wrap">
-        <canvas id="game" width="960" height="540" role="img" aria-label="2D platform game canvas"></canvas>
-        <div id="overlay" class="overlay">
-          <div class="panel">
-            <h2 id="overlayTitle">Mushroom Meadow Run</h2>
-            <p id="overlayText">Run, jump, stomp enemies, fire seed shots, and collect power ups across three levels.</p>
-            <button id="startBtn">Start Game</button>
-          </div>
+  <title>Mushroom Meadow Run</title>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+  <main class="game-shell" aria-label="Mushroom Meadow Run game">
+
+    <!-- ==================== HUD ==================== -->
+    <section class="hud" aria-live="polite">
+
+      <div class="brand">
+        <span class="logo" aria-hidden="true">🍄</span>
+
+        <div>
+          <h1>Mushroom Meadow Run</h1>
+          <p>Reach the flag, collect coins, and defeat bugs!</p>
         </div>
       </div>
 
-      <section class="controls" aria-label="Game controls">
-        <div class="keyboard-help">
-          <strong>Keyboard:</strong> A/D or ←/→ move · W/Space/↑ jump · J/F fire · P pause · R restart
+      <div class="stats">
+
+        <div class="stat health-stat">
+          <span>Health</span>
+
+          <div
+            class="healthbar"
+            aria-label="Player health"
+          >
+            <div id="healthFill"></div>
+          </div>
         </div>
-        <div class="touch-controls" aria-hidden="false">
-          <button data-key="left" class="pad-btn">◀</button>
-          <button data-key="right" class="pad-btn">▶</button>
-          <button data-key="jump" class="pad-btn action">Jump</button>
-          <button data-key="fire" class="pad-btn action danger">Fire</button>
+
+        <div class="stat">
+          <span>Level</span>
+          <strong id="levelText">1/8</strong>
         </div>
-      </section>
-    </main>
-    <script src="game.js"></script>
-  </body>
-</html>
+
+        <div class="stat">
+          <span>Score</span>
+          <strong id="scoreText">0</strong>
+        </div>
+
+        <div class="stat">
+          <span>Coins</span>
+          <strong id="coinText">0</strong>
+        </div>
+
+        <div class="stat">
+          <span>Power</span>
+          <strong id="powerText">-</strong>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ==================== GAME ==================== -->
+
+    <div class="stage-wrap">
+
+      <canvas
+        id="game"
+        width="960"
+        height="540"
+        role="img"
+        aria-label="2D platform game canvas"
+      ></canvas>
+
+
+      <!-- START / PAUSE / GAME OVER OVERLAY -->
+
+      <div id="overlay" class="overlay">
+
+        <div class="panel">
+
+          <h2 id="overlayTitle">
+            Mushroom Meadow Run
+          </h2>
+
+          <p id="overlayText">
+            Run, jump, stomp enemies, fire seed shots,
+            collect power ups, and survive all eight levels!
+          </p>
+
+          <button
+            id="startBtn"
+            type="button"
+          >
+            Start Game
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- ==================== CONTROLS ==================== -->
+
+    <section
+      class="controls"
+      aria-label="Game controls"
+    >
+
+      <div class="keyboard-help">
+
+        <strong>Keyboard:</strong>
+
+        A/D or ←/→ move ·
+        W/Space/↑ jump ·
+        J/F fire ·
+        Shift/X dash ·
+        P pause ·
+        R restart ·
+        Q change weapon
+
+      </div>
+
+
+      <!-- MOBILE CONTROLS -->
+
+      <div
+        class="touch-controls"
+        aria-hidden="false"
+      >
+
+        <button
+          data-key="left"
+          class="pad-btn"
+          type="button"
+          aria-label="Move left"
+        >
+          ◀
+        </button>
+
+
+        <button
+          data-key="right"
+          class="pad-btn"
+          type="button"
+          aria-label="Move right"
+        >
+          ▶
+        </button>
+
+
+        <button
+          data-key="jump"
+          class="pad-btn action"
+          type="button"
+          aria-label="Jump"
+        >
+          Jump
+        </button>
+
+
+        <button
+          data-key="fire"
+          class="pad-btn action danger"
+          type="button"
+          aria-label="Fire"
+        >
+          Fire
+        </button>
+
+
+        <button
+          data-key="dash"
+          class="pad-btn action"
+          type="button"
+          aria-label="Dash"
+        >
+          Dash
+        </button>
+
+      </div>
+
+    </section>
+
+  </main>
+
+
+  <!-- ==================== GAME JAVASCRIPT ==================== -->
+
+  <script src="game.js"></script>
+
+
+  <!-- ==================== START BUTTON FALLBACK ==================== -->
+
+  <script>
+
+    document.addEventListener(
+      "DOMContentLoaded",
+      function () {
+
+        const startButton =
+          document.getElementById("startBtn");
+
+
+        if (startButton) {
+
+          startButton.onclick = function () {
+
+            if (typeof window.startGame === "function") {
+
+              window.startGame();
+
+            }
+            else if (typeof start === "function") {
+
+              start(
+                0,
+                {
+                  score: 0,
+                  coins: 0,
+                  bestCombo: 0,
+                  weapon: "basic"
+                }
+              );
+
+            }
+            else {
+
+              console.error(
+                "Game start function was not found."
+              );
+
+              const title =
+                document.getElementById("overlayTitle");
+
+              const text =
+                document.getElementById("overlayText");
+
+              if (title) {
+                title.textContent =
+                  "Game Error";
+              }
+
+              if (text) {
+                text.textContent =
+                  "game.js could not be loaded. Make sure game.js is in the same folder as this HTML file.";
+              }
+
+            }
+
+          };
+
+        }
+
+      }
+
+    );
+
+  </script>
+
+</body>
+  </html>
