@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Mushroom Meadow Run</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell" aria-label="Mushroom Meadow Run game">
+      <section class="hud" aria-live="polite">
+        <div class="brand">
+          <span class="logo" aria-hidden="true">🍄</span>
+          <div>
+            <h1>Mushroom Meadow Run</h1>
+            <p>Reach the flag, collect coins, and defeat bugs!</p>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat health-stat">
+            <span>Health</span>
+            <div class="healthbar" aria-label="Player health">
+              <div id="healthFill"></div>
+            </div>
+          </div>
+          <div class="stat"><span>Level</span><strong id="levelText">1</strong></div>
+          <div class="stat"><span>Score</span><strong id="scoreText">0</strong></div>
+          <div class="stat"><span>Coins</span><strong id="coinText">0</strong></div>
+          <div class="stat"><span>Power</span><strong id="powerText">-</strong></div>
+        </div>
+      </section>
+
+      <div class="stage-wrap">
+        <canvas id="game" width="960" height="540" role="img" aria-label="2D platform game canvas"></canvas>
+        <div id="overlay" class="overlay">
+          <div class="panel">
+            <h2 id="overlayTitle">Mushroom Meadow Run</h2>
+            <p id="overlayText">Run, jump, stomp enemies, fire seed shots, and collect power ups across three levels.</p>
+            <button id="startBtn">Start Game</button>
+          </div>
+        </div>
+      </div>
+
+      <section class="controls" aria-label="Game controls">
+        <div class="keyboard-help">
+          <strong>Keyboard:</strong> A/D or ←/→ move · W/Space/↑ jump · J/F fire · P pause · R restart
+        </div>
+        <div class="touch-controls" aria-hidden="false">
+          <button data-key="left" class="pad-btn">◀</button>
+          <button data-key="right" class="pad-btn">▶</button>
+          <button data-key="jump" class="pad-btn action">Jump</button>
+          <button data-key="fire" class="pad-btn action danger">Fire</button>
+        </div>
+      </section>
+    </main>
+    <script src="game.js"></script>
+  </body>
+</html>
