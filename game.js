@@ -15,8 +15,21 @@ const ui = {
 const W = canvas.width;
 const H = canvas.height;
 const GRAVITY = 0.75;
-const keys = { left: false, right: false, jump: false, fire: false };
+const keys = { left: false, right: false, jump: false, fire: false, dash: false };
 let game;
+let lastTime = performance.now();
+let audioCtx = null;
+
+function beep(freq = 440, duration = 0.06, type = 'square', volume = 0.035) {
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.value = volume;
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    o.stop(audioCtx.currentTime + duration);
+  } catch (_) {}
+}
 
 const LEVELS = [
   {
@@ -58,8 +71,13 @@ function rects(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + 
 function makeGame(level = 0, carry = { score: 0, coins: 0 }) {
   const data = LEVELS[level];
   return {
-    state: 'ready', level, data, camera: 0, score: carry.score, coins: carry.coins, bullets: [], particles: [], fireCooldown: 0,
-    player: { x: data.player.x, y: data.player.y, w: 34, h: 48, vx: 0, vy: 0, onGround: false, health: 100, inv: 0, power: '', powerTime: 0, facing: 1, respawnX: data.player.x, respawnY: data.player.y },
+    state: 'ready', level, data, camera: 0, score: carry.score, coins: carry.coins,
+    bullets: [], particles: [], fireCooldown: 0, shake: 0, combo: 0, comboTimer: 0,
+    elapsed: 0, bestCombo: carry.bestCombo || 0,
+    player: { x: data.player.x, y: data.player.y, w: 34, h: 48, vx: 0, vy: 0,
+      onGround: false, health: 100, inv: 0, power: '', powerTime: 0, facing: 1,
+      respawnX: data.player.x, respawnY: data.player.y, jumps: 0, coyote: 0,
+      dash: 0, dashCooldown: 0 },
     coinsList: data.coins.map(([x, y]) => ({ x, y, w: 22, h: 22, got: false })),
     gems: (data.gems || []).map(([x, y]) => ({ x, y, w: 24, h: 24, got: false })),
     springs: (data.springs || []).map(([x, y]) => ({ x, y, w: 34, h: 20 })),
@@ -69,30 +87,95 @@ function makeGame(level = 0, carry = { score: 0, coins: 0 }) {
   };
 }
 
-function start(level = 0, carry) { game = makeGame(level, carry); game.state = 'playing'; ui.overlay.classList.add('hidden'); updateUI(); }
+function start(level = 0, carry = { score: 0, coins: 0, bestCombo: 0 }) {
+  game = makeGame(level, carry); game.state = 'playing';
+  lastTime = performance.now(); ui.overlay.classList.add('hidden'); updateUI(); beep(520, .07);
+}
 function show(title, text, button = 'Play Again') { ui.title.textContent = title; ui.text.textContent = text; ui.start.textContent = button; ui.overlay.classList.remove('hidden'); }
 
 function update() {
   if (!game || game.state !== 'playing') return;
+
+  const dt = Math.min(2, (performance.now() - lastTime) / 16.67);
+  lastTime = performance.now();
   const p = game.player;
-  p.vx = (keys.left ? -4.2 : 0) + (keys.right ? 4.2 : 0);
-  if (p.vx) p.facing = Math.sign(p.vx);
-  if (keys.jump && p.onGround) { p.vy = -14.5; p.onGround = false; }
-  if (keys.fire && game.fireCooldown <= 0 && (p.power === 'fire' || p.power === 'star')) {
-    game.bullets.push({ x: p.x + p.w / 2, y: p.y + 20, w: 14, h: 8, vx: 9 * p.facing });
-    game.fireCooldown = 18;
+  game.elapsed += dt;
+
+  // Combo timer.
+  if (game.comboTimer > 0) game.comboTimer -= dt;
+  else game.combo = 0;
+
+  // Smooth acceleration/deceleration.
+  const target = (keys.left ? -4.8 : 0) + (keys.right ? 4.8 : 0);
+  if (target) p.facing = Math.sign(target);
+  p.vx += (target - p.vx) * Math.min(1, 0.22 * dt);
+  if (!target) p.vx *= Math.pow(0.78, dt);
+
+  // Coyote time makes jumps feel much better.
+  if (p.onGround) { p.coyote = 7; p.jumps = 0; }
+  else p.coyote = Math.max(0, p.coyote - dt);
+
+  // Double jump. The input listener resets keys.jump after the first frame.
+  if (keys.jump && !game._jumpLatch) {
+    game._jumpLatch = true;
+    if (p.onGround || p.coyote > 0) {
+      p.vy = -14.5; p.onGround = false; p.coyote = 0; p.jumps = 1;
+      pop(p.x + p.w / 2, p.y + p.h, '#ffffff'); beep(520);
+    } else if (p.jumps < 2) {
+      p.vy = -12.5; p.jumps++;
+      pop(p.x + p.w / 2, p.y + p.h, '#9de9ff'); beep(700);
+    }
   }
-  game.fireCooldown--;
-  p.vy += GRAVITY; p.x += p.vx; collide(p, 'x'); p.y += p.vy; p.onGround = false; collide(p, 'y');
-  if (p.x < 0) p.x = 0; if (p.x + p.w > game.data.width) p.x = game.data.width - p.w;
+  if (!keys.jump) game._jumpLatch = false;
+
+  // Dash: Shift/X. Briefly ignores gravity and damages enemies on contact.
+  if (keys.dash && !game._dashLatch && p.dashCooldown <= 0) {
+    game._dashLatch = true;
+    p.dash = 10; p.dashCooldown = 45; p.inv = Math.max(p.inv, 18);
+    p.vx = p.facing * 13; p.vy = 0; game.shake = 5;
+    pop(p.x + p.w / 2, p.y + p.h / 2, '#8cf6ff'); beep(180, .09, 'sawtooth');
+  }
+  if (!keys.dash) game._dashLatch = false;
+
+  if (p.dash > 0) {
+    p.dash -= dt;
+    p.x += p.vx * dt;
+    for (const e of game.enemies) {
+      if (!e.dead && rects(p, e)) {
+        killEnemy(e, 450);
+      }
+    }
+  } else {
+    p.vy += GRAVITY * dt;
+    p.x += p.vx * dt; collide(p, 'x');
+    p.y += p.vy * dt; p.onGround = false; collide(p, 'y');
+  }
+
+  if (p.dashCooldown > 0) p.dashCooldown -= dt;
+  if (p.x < 0) p.x = 0;
+  if (p.x + p.w > game.data.width) p.x = game.data.width - p.w;
   if (p.y > H + 80) fallRespawn();
-  if (p.inv > 0) p.inv--; if (p.powerTime > 0 && --p.powerTime === 0) p.power = '';
+
+  if (p.inv > 0) p.inv -= dt;
+  if (p.powerTime > 0 && (p.powerTime -= dt) <= 0) p.power = '';
+
+  if (keys.fire && game.fireCooldown <= 0 && (p.power === 'fire' || p.power === 'star')) {
+    game.bullets.push({
+      x: p.x + p.w / 2, y: p.y + 20, w: 14, h: 8, vx: 10 * p.facing,
+      life: 75
+    });
+    game.fireCooldown = p.power === 'star' ? 10 : 15;
+    beep(260, .04, 'triangle');
+  }
+  game.fireCooldown -= dt;
+
   updateItems(); updateSprings(); updateEnemies(); updateBullets();
   if (rects(p, { ...game.data.flag, w: 44, h: 190 })) nextLevel();
+
   game.camera = Math.max(0, Math.min(game.data.width - W, p.x - W * 0.42));
+  game.shake *= 0.86;
   updateUI();
 }
-
 function collide(p, axis) {
   for (const [x, y, w, h] of game.data.platforms) {
     const plat = { x, y, w, h };
@@ -103,8 +186,10 @@ function collide(p, axis) {
   }
 }
 function updateItems() {
-  for (const c of game.coinsList) if (!c.got && rects(game.player, c)) { c.got = true; game.coins++; game.score += 100; pop(c.x, c.y, '#ffd75a'); }
-  for (const gem of game.gems) if (!gem.got && rects(game.player, gem)) { gem.got = true; game.score += 500; pop(gem.x, gem.y, '#72f7ff'); }
+  for (const c of game.coinsList) if (!c.got && rects(game.player, c)) { c.got = true; game.coins++; game.score += 100;
+      pop(c.x, c.y, '#ffd75a'); beep(760, .045, 'sine'); }
+  for (const gem of game.gems) if (!gem.got && rects(game.player, gem)) { gem.got = true; game.score += 500;
+      pop(gem.x, gem.y, '#72f7ff'); pop(gem.x, gem.y, '#ffffff'); beep(980, .08, 'sine'); }
   for (const cp of game.checkpoints) if (!cp.active && rects(game.player, cp)) { game.checkpoints.forEach(c => c.active = false); cp.active = true; game.player.respawnX = cp.x; game.player.respawnY = cp.y - game.player.h; game.score += 150; pop(cp.x, cp.y, '#7cff9e'); }
   for (const item of game.powerups) if (!item.got && rects(game.player, item)) {
     item.got = true; game.score += 250; pop(item.x, item.y, item.type === 'heart' ? '#ff5c74' : '#5dff9d');
@@ -121,15 +206,39 @@ function updateEnemies() {
     if (e.dead) continue;
     e.x += e.vx; if (e.x < e.min || e.x > e.max) e.vx *= -1;
     if (rects(game.player, e)) {
-      if (game.player.vy > 2 || game.player.power === 'star') { e.dead = true; game.player.vy = -9; game.score += 300; pop(e.x, e.y, '#fff'); }
-      else hurt(18);
+      if (game.player.vy > 2 || game.player.power === 'star') {
+        killEnemy(e, 300);
+        game.player.vy = -9;
+      } else hurt(18);
     }
   }
 }
+function killEnemy(e, baseScore = 300) {
+  if (e.dead) return;
+  e.dead = true;
+  game.combo = Math.min(10, game.combo + 1);
+  game.comboTimer = 120;
+  const multiplier = 1 + Math.max(0, game.combo - 1) * 0.5;
+  const gained = Math.round(baseScore * multiplier);
+  game.score += gained;
+  game.bestCombo = Math.max(game.bestCombo, game.combo);
+  game.shake = Math.min(10, game.shake + 2);
+  pop(e.x + e.w / 2, e.y + e.h / 2, '#fff');
+  pop(e.x + e.w / 2, e.y + e.h / 2, '#ffcf5a');
+  beep(220 + game.combo * 45, .07, 'square');
+}
+
 function updateBullets() {
-  for (const b of game.bullets) b.x += b.vx;
-  for (const b of game.bullets) for (const e of game.enemies) if (!e.dead && rects(b, e)) { e.dead = true; b.dead = true; game.score += 200; pop(e.x, e.y, '#ffed80'); }
-  game.bullets = game.bullets.filter(b => !b.dead && b.x > game.camera - 40 && b.x < game.camera + W + 40);
+  for (const b of game.bullets) {
+    b.x += b.vx;
+    b.life--;
+    if (Math.random() < .45) game.particles.push({ x: b.x, y: b.y + 3, color: '#fff1a0', life: 12, vx: -b.vx * .08, vy: 0 });
+  }
+  for (const b of game.bullets) for (const e of game.enemies) {
+    if (!e.dead && rects(b, e)) { killEnemy(e, 200); b.dead = true; }
+  }
+  game.bullets = game.bullets.filter(b => !b.dead && b.life > 0 &&
+    b.x > game.camera - 80 && b.x < game.camera + W + 80);
   game.particles = game.particles.filter(pt => --pt.life > 0);
 }
 function hurt(amount) {
@@ -154,30 +263,70 @@ function draw() {
   if (!game) return;
   const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, game.data.sky[0]); g.addColorStop(1, game.data.sky[1]); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   const cam = game.camera;
-  ctx.save(); ctx.translate(-cam, 0);
+  ctx.save();
+  if (game.shake > .5) ctx.translate((Math.random() - .5) * game.shake, (Math.random() - .5) * game.shake);
+  ctx.translate(-cam, 0);
   drawBackground(cam); drawPlatforms(); drawFlag(); drawItems(); drawSprings(); drawCheckpoints(); drawEnemies(); drawBullets(); drawPlayer(); drawParticles();
   ctx.restore();
 }
 function drawBackground(cam) {
-  ctx.fillStyle = 'rgba(255,255,255,.6)';
-  for (let x = -200; x < game.data.width + 400; x += 360) { ctx.beginPath(); ctx.ellipse(x + 80, 90 + (x % 3) * 16, 58, 22, 0, 0, Math.PI * 2); ctx.ellipse(x + 130, 86, 48, 20, 0, 0, Math.PI * 2); ctx.fill(); }
-  ctx.fillStyle = '#4fa647'; for (let x = -100; x < game.data.width; x += 260) ctx.fillRect(x, 455, 100, 45);
+  // Parallax hills.
+  ctx.fillStyle = 'rgba(35,110,145,.20)';
+  for (let x = -500; x < game.data.width + 800; x += 520) {
+    ctx.beginPath(); ctx.arc(x - cam * .18, 470, 190, Math.PI, 0); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,.58)';
+  for (let x = -200; x < game.data.width + 400; x += 360) {
+    ctx.beginPath();
+    ctx.ellipse(x + 80, 90 + (x % 3) * 16, 58, 22, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 130, 86, 48, 20, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = '#4fa647';
+  for (let x = -100; x < game.data.width; x += 260) ctx.fillRect(x, 455, 100, 45);
 }
 function drawPlatforms() { for (const [x, y, w, h] of game.data.platforms) { ctx.fillStyle = '#7a4a2a'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#36b24a'; ctx.fillRect(x, y, w, 12); ctx.fillStyle = 'rgba(255,255,255,.13)'; ctx.fillRect(x, y + 14, w, 5); } }
 function drawFlag() { const f = game.data.flag; ctx.fillStyle = '#f8f8ff'; ctx.fillRect(f.x, f.y, 8, 190); ctx.fillStyle = '#ff4e64'; ctx.beginPath(); ctx.moveTo(f.x + 8, f.y + 8); ctx.lineTo(f.x + 92, f.y + 38); ctx.lineTo(f.x + 8, f.y + 68); ctx.fill(); }
-function drawItems() { for (const c of game.coinsList) if (!c.got) { ctx.fillStyle = '#ffd75a'; ctx.beginPath(); ctx.ellipse(c.x + 11, c.y + 11, 10, 13, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#fff3a7'; ctx.fillRect(c.x + 9, c.y + 3, 4, 16); } for (const gem of game.gems) if (!gem.got) { ctx.fillStyle = '#72f7ff'; ctx.beginPath(); ctx.moveTo(gem.x + 12, gem.y); ctx.lineTo(gem.x + 24, gem.y + 10); ctx.lineTo(gem.x + 12, gem.y + 24); ctx.lineTo(gem.x, gem.y + 10); ctx.closePath(); ctx.fill(); } for (const p of game.powerups) if (!p.got) { ctx.fillStyle = p.type === 'heart' ? '#ff5c74' : p.type === 'star' ? '#abff5d' : '#ff8d3d'; ctx.fillRect(p.x, p.y, p.w, p.h); ctx.fillStyle = '#fff'; ctx.fillText(p.type === 'heart' ? '♥' : p.type === 'star' ? '★' : 'F', p.x + 7, p.y + 20); } }
+function drawItems() { for (const c of game.coinsList) if (!c.got) { ctx.fillStyle = '#ffd75a'; ctx.beginPath(); ctx.ellipse(c.x + 11, c.y + 11, 10, 13, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#fff3a7'; ctx.fillRect(c.x + 9, c.y + 3, 4, 16); } for (const gem of game.gems) if (!gem.got) { ctx.fillStyle = '#72f7ff'; ctx.beginPath(); ctx.moveTo(gem.x + 12, gem.y); ctx.lineTo(gem.x + 24, gem.y + 10); ctx.lineTo(gem.x + 12, gem.y + 24); ctx.lineTo(gem.x, gem.y + 10); ctx.closePath(); ctx.fill(); } for (const p of game.powerups) if (!p.got) { ctx.fillStyle = p.type === 'heart' ? '#ff5c74' : p.type === 'star' ? '#abff5d' : '#ff8d3d'; ctx.fillRect(p.x, p.y, p.w, p.h); ctx.fillStyle = '#fff'; ctx.fillText(p.type === 'heart' ? 'â™¥' : p.type === 'star' ? 'â˜…' : 'F', p.x + 7, p.y + 20); } }
 function drawSprings() { for (const s of game.springs) { ctx.fillStyle = '#ff78d2'; ctx.fillRect(s.x, s.y + 10, s.w, 10); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(s.x + 5, s.y + 12); ctx.lineTo(s.x + 12, s.y + 2); ctx.lineTo(s.x + 20, s.y + 12); ctx.lineTo(s.x + 28, s.y + 2); ctx.stroke(); } }
 function drawCheckpoints() { for (const cp of game.checkpoints) { ctx.fillStyle = '#f8f8ff'; ctx.fillRect(cp.x, cp.y, 5, cp.h); ctx.fillStyle = cp.active ? '#7cff9e' : '#ffe45c'; ctx.beginPath(); ctx.moveTo(cp.x + 5, cp.y + 5); ctx.lineTo(cp.x + 54, cp.y + 21); ctx.lineTo(cp.x + 5, cp.y + 38); ctx.fill(); } }
 function drawEnemies() { for (const e of game.enemies) if (!e.dead) { ctx.fillStyle = '#7030a0'; ctx.fillRect(e.x, e.y, e.w, e.h); ctx.fillStyle = '#1c082d'; ctx.fillRect(e.x + 7, e.y + 9, 6, 6); ctx.fillRect(e.x + 23, e.y + 9, 6, 6); } }
 function drawBullets() { ctx.fillStyle = '#ffe45c'; for (const b of game.bullets) ctx.fillRect(b.x, b.y, b.w, b.h); }
-function drawPlayer() { const p = game.player; if (p.inv % 10 > 5) return; ctx.fillStyle = p.power === 'star' ? '#fff06b' : '#e83d49'; ctx.fillRect(p.x + 3, p.y, 28, 18); ctx.fillStyle = '#3266d8'; ctx.fillRect(p.x, p.y + 18, p.w, 30); ctx.fillStyle = '#ffd1a3'; ctx.fillRect(p.x + 8, p.y + 5, 18, 16); ctx.fillStyle = '#20120e'; ctx.fillRect(p.x + (p.facing > 0 ? 22 : 8), p.y + 10, 4, 4); }
+function drawPlayer() {
+  const p = game.player;
+  if (p.inv % 10 > 5) return;
+
+  if (p.power === 'star') {
+    ctx.globalAlpha = .25 + Math.sin(game.elapsed * .25) * .1;
+    ctx.fillStyle = '#fff06b'; ctx.beginPath();
+    ctx.arc(p.x + p.w / 2, p.y + p.h / 2, 31, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (p.dash > 0) {
+    ctx.globalAlpha = .3;
+    ctx.fillStyle = '#8cf6ff';
+    ctx.fillRect(p.x - p.facing * 25, p.y + 10, 28, 26);
+    ctx.globalAlpha = 1;
+  }
+  ctx.fillStyle = p.power === 'star' ? '#fff06b' : p.power === 'fire' ? '#ff713b' : '#e83d49';
+  ctx.fillRect(p.x + 3, p.y, 28, 18);
+  ctx.fillStyle = '#3266d8'; ctx.fillRect(p.x, p.y + 18, p.w, 30);
+  ctx.fillStyle = '#ffd1a3'; ctx.fillRect(p.x + 8, p.y + 5, 18, 16);
+  ctx.fillStyle = '#20120e'; ctx.fillRect(p.x + (p.facing > 0 ? 22 : 8), p.y + 10, 4, 4);
+}
 function drawParticles() { for (const pt of game.particles) { pt.x += pt.vx; pt.y += pt.vy; pt.vy += .2; ctx.fillStyle = pt.color; ctx.globalAlpha = Math.max(0, pt.life / 40); ctx.fillRect(pt.x, pt.y, 5, 5); ctx.globalAlpha = 1; } }
-function updateUI() { const p = game.player; ui.health.style.width = `${Math.max(0, p.health)}%`; ui.level.textContent = `${game.level + 1}/3`; ui.score.textContent = game.score; ui.coins.textContent = game.coins; ui.power.textContent = p.power ? (p.power === 'star' ? `Star ${Math.ceil(p.powerTime / 60)}s` : 'Fire') : '-'; }
+function updateUI() { const p = game.player; ui.health.style.width = `${Math.max(0, p.health)}%`; ui.level.textContent = `${game.level + 1}/3`; ui.score.textContent = game.score; ui.coins.textContent = game.coins; ui.power.textContent = `${p.power ? (p.power === 'star' ? `Star ${Math.ceil(p.powerTime / 60)}s` : 'Fire') : '-'} | Combo x${game.combo || 0} | Dash ${p.dashCooldown <= 0 ? 'READY' : Math.ceil(p.dashCooldown / 60) + 's'}`; }
 function loop() { update(); draw(); requestAnimationFrame(loop); }
 
-const keyMap = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right', ArrowUp: 'jump', w: 'jump', W: 'jump', ' ': 'jump', j: 'fire', J: 'fire', f: 'fire', F: 'fire' };
+const keyMap = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
+  ArrowUp: 'jump', w: 'jump', W: 'jump', ' ': 'jump', j: 'fire', J: 'fire', f: 'fire', F: 'fire',
+  Shift: 'dash', x: 'dash', X: 'dash' };
 addEventListener('keydown', e => { if (keyMap[e.key]) { keys[keyMap[e.key]] = true; e.preventDefault(); } if (e.key === 'p' || e.key === 'P') { game.state = game.state === 'playing' ? 'paused' : 'playing'; if (game.state === 'paused') show('Paused', 'Press P or Start to resume.', 'Resume'); else ui.overlay.classList.add('hidden'); } if (e.key === 'r' || e.key === 'R') start(); });
 addEventListener('keyup', e => { if (keyMap[e.key]) keys[keyMap[e.key]] = false; });
 document.querySelectorAll('[data-key]').forEach(btn => { const k = btn.dataset.key; const on = e => { e.preventDefault(); keys[k] = true; btn.classList.add('active'); }; const off = e => { e.preventDefault(); keys[k] = false; btn.classList.remove('active'); }; btn.addEventListener('pointerdown', on); btn.addEventListener('pointerup', off); btn.addEventListener('pointercancel', off); btn.addEventListener('pointerleave', off); });
-ui.start.addEventListener('click', () => game?.state === 'paused' ? (game.state = 'playing', ui.overlay.classList.add('hidden')) : start());
+ui.start.addEventListener('click', () => {
+  beep(440, .05);
+  game?.state === 'paused'
+    ? (game.state = 'playing', ui.overlay.classList.add('hidden'))
+    : start();
+});
 game = makeGame(); updateUI(); draw(); loop();
