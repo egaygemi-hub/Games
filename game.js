@@ -19,6 +19,7 @@ const keys = { left: false, right: false, jump: false, fire: false, dash: false 
 let game;
 let lastTime = performance.now();
 let audioCtx = null;
+let gameLoopStarted = false;
 
 function beep(freq = 440, duration = 0.06, type = 'square', volume = 0.035) {
   try {
@@ -197,16 +198,39 @@ function makeGame(level = 0, carry = { score: 0, coins: 0 }) {
     gems: (data.gems || []).map(([x, y]) => ({ x, y, w: 24, h: 24, got: false })),
     springs: (data.springs || []).map(([x, y]) => ({ x, y, w: 34, h: 20 })),
     checkpoints: (data.checkpoints || []).map(([x, y]) => ({ x, y, w: 22, h: 80, active: false })),
-    powerups: data.powerups.map(p => ({ ...p, w: 28, h: 28, got: false })),
-    enemies: data.enemies.map(e => ({ ...e, y: e.y, w: e.type === 'boss' ? 72 : 36,
-      h: e.type === 'boss' ? 72 : 36, vx: e.type === 'flyer' ? 1.4 : 1.15,
-      dead: false, hp: e.type === 'boss' ? 10 : 1, shootCooldown: 80 + Math.random() * 80, phase: Math.random() * 6.28 })),
+    powerups: (data.powerups || []).map(p => ({ ...p, w: 28, h: 28, got: false })),
+    enemies: (data.enemies || []).map(e => {
+      const type = e.type || 'walker';
+      return { ...e, type, y: e.y, w: type === 'boss' ? 72 : 36,
+        h: type === 'boss' ? 72 : 36, vx: type === 'flyer' ? 1.4 : 1.15,
+        dead: false, hp: type === 'boss' ? 10 : 1,
+        shootCooldown: 80 + Math.random() * 80, phase: Math.random() * 6.28 };
+    }),
   };
 }
 
-function start(level = 0, carry = { score: 0, coins: 0, bestCombo: 0 }) {
-  game = makeGame(level, carry); game.state = 'playing';
-  lastTime = performance.now(); ui.overlay.classList.add('hidden'); updateUI(); beep(520, .07);
+function start(level = 0, carry = { score: 0, coins: 0, bestCombo: 0, weapon: 'basic' }) {
+  try {
+    if (!LEVELS[level]) level = 0;
+    game = makeGame(level, carry);
+    game.state = 'playing';
+    lastTime = performance.now();
+
+    if (ui.overlay) ui.overlay.classList.add('hidden');
+    updateUI();
+    beep(520, .07);
+
+    // Ensure the animation loop is alive after starting.
+    if (!gameLoopStarted) {
+      gameLoopStarted = true;
+      requestAnimationFrame(loop);
+    }
+  } catch (err) {
+    console.error('Could not start game:', err);
+    if (ui.title) ui.title.textContent = 'Game Error';
+    if (ui.text) ui.text.textContent = 'The game could not start. Check the browser console for details.';
+    if (ui.overlay) ui.overlay.classList.remove('hidden');
+  }
 }
 function show(title, text, button = 'Play Again') { ui.title.textContent = title; ui.text.textContent = text; ui.start.textContent = button; ui.overlay.classList.remove('hidden'); }
 
@@ -374,19 +398,4 @@ function updateEnemies() {
       if (e.x < e.min || e.x > e.max) e.vx *= -1;
     } else if (e.type === 'boss') {
       e.x += e.vx * .65;
-      e.y = 360 + Math.sin(e.phase * .7) * 45;
-      if (e.x < e.min || e.x > e.max) e.vx *= -1;
-    } else {
-      e.x += e.vx;
-      if (e.x < e.min || e.x > e.max) e.vx *= -1;
-    }
-
-    if ((e.type === 'shooter' || e.type === 'boss') && --e.shootCooldown <= 0) {
-      const dx = (p.x + p.w/2) - (e.x + e.w/2);
-      const dy = (p.y + p.h/2) - (e.y + e.h/2);
-      const len = Math.max(1, Math.hypot(dx, dy));
-      const speed = e.type === 'boss' ? 4.2 : 3.4;
-      game.enemyBullets.push({
-        x:e.x + e.w/2, y:e.y + e.h/2, w:e.type === 'boss' ? 13 : 9,
-        h:e.type === 'boss' ? 13 : 9, vx:dx/len*speed, vy:dy/len*speed,
-        life:180, damage:e.type === 
+      e.y =
