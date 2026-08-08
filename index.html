@@ -2,265 +2,78 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-
-  <title>Mushroom Meadow Run</title>
-
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#0d1117">
+  <title>Mushroom Meadow Run â€” Retro Edition</title>
   <link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
-
-  <main class="game-shell" aria-label="Mushroom Meadow Run game">
-
-    <!-- ==================== HUD ==================== -->
-    <section class="hud" aria-live="polite">
-
-      <div class="brand">
-        <span class="logo" aria-hidden="true">🍄</span>
-
-        <div>
-          <h1>Mushroom Meadow Run</h1>
-          <p>Reach the flag, collect coins, and defeat bugs!</p>
-        </div>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-icon">ðŸ„</span><div><h1>MUSHROOM MEADOW</h1><p>RETRO ADVENTURE</p></div></div>
+      <div class="top-stats">
+        <div><small>HP</small><div class="meter"><i id="healthFill"></i></div></div>
+        <div><small>LV</small><b id="levelText">1</b></div>
+        <div><small>XP</small><b id="xpText">0/100</b></div>
+        <div><small>COINS</small><b id="coinText">0</b></div>
+        <div><small>GEMS</small><b id="gemText">0</b></div>
       </div>
+    </header>
 
-      <div class="stats">
-
-        <div class="stat health-stat">
-          <span>Health</span>
-
-          <div
-            class="healthbar"
-            aria-label="Player health"
-          >
-            <div id="healthFill"></div>
+    <section class="console">
+      <div class="screen-frame">
+        <div class="screen-head">
+          <span id="levelText2">LEVEL 1</span>
+          <span id="weaponText">BLASTER</span>
+          <span id="livesText">â™¥â™¥â™¥</span>
+        </div>
+        <div class="screen">
+          <canvas id="game" width="960" height="540" aria-label="Mushroom Meadow Run"></canvas>
+          <div id="overlay" class="overlay">
+            <div class="panel">
+              <div class="pixel-logo">ðŸ„</div>
+              <h2 id="overlayTitle">MUSHROOM MEADOW RUN</h2>
+              <p id="overlayText">A retro platform adventure. Complete quests, gain XP, level up, and clear 12 worlds.</p>
+              <button id="startBtn" class="primary">START GAME</button>
+              <p class="hint">A/D or D-pad â€¢ W/â†‘/A jump â€¢ J/B fire â€¢ X dash â€¢ Y weapon â€¢ P pause</p>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div class="stat">
-          <span>Level</span>
-          <strong id="levelText">1/8</strong>
-        </div>
+      <aside class="quest-panel">
+        <div class="quest-title">QUEST LOG <button id="questBtn">SELECT</button></div>
+        <div id="questList"></div>
+        <div class="progress-line"><span>XP</span><div><i id="xpFill"></i></div></div>
+        <div class="buffs" id="powerText">NO POWER-UP</div>
+      </aside>
+    </section>
 
-        <div class="stat">
-          <span>Score</span>
-          <strong id="scoreText">0</strong>
-        </div>
-
-        <div class="stat">
-          <span>Coins</span>
-          <strong id="coinText">0</strong>
-        </div>
-
-        <div class="stat">
-          <span>Power</span>
-          <strong id="powerText">-</strong>
-        </div>
-
+    <section class="controller" aria-label="Game controller">
+      <div class="dpad">
+        <button data-key="up" class="up">â–²</button>
+        <button data-key="left" class="left">â—€</button>
+        <button data-key="right" class="right">â–¶</button>
+        <button data-key="down" class="down">â–¼</button>
+        <div class="dpad-center"></div>
+      </div>
+      <div class="center-controls">
+        <button id="selectBtn" class="small-btn">SELECT</button>
+        <button id="pauseBtn" class="small-btn">START</button>
+        <div class="joystick" id="joystick"><div class="stick"></div></div>
+      </div>
+      <div class="face">
+        <button data-key="y" class="y">Y</button>
+        <button data-key="x" class="x">X</button>
+        <button data-key="b" class="b">B</button>
+        <button data-key="a" class="a">A</button>
       </div>
     </section>
 
-
-    <!-- ==================== GAME ==================== -->
-
-    <div class="stage-wrap">
-
-      <canvas
-        id="game"
-        width="960"
-        height="540"
-        role="img"
-        aria-label="2D platform game canvas"
-      ></canvas>
-
-
-      <!-- START / PAUSE / GAME OVER OVERLAY -->
-
-      <div id="overlay" class="overlay">
-
-        <div class="panel">
-
-          <h2 id="overlayTitle">
-            Mushroom Meadow Run
-          </h2>
-
-          <p id="overlayText">
-            Run, jump, stomp enemies, fire seed shots,
-            collect power ups, and survive all eight levels!
-          </p>
-
-          <button
-            id="startBtn"
-            type="button"
-          >
-            Start Game
-          </button>
-
-        </div>
-
-      </div>
-
-    </div>
-
-
-    <!-- ==================== CONTROLS ==================== -->
-
-    <section
-      class="controls"
-      aria-label="Game controls"
-    >
-
-      <div class="keyboard-help">
-
-        <strong>Keyboard:</strong>
-
-        A/D or ←/→ move ·
-        W/Space/↑ jump ·
-        J/F fire ·
-        Shift/X dash ·
-        P pause ·
-        R restart ·
-        Q change weapon
-
-      </div>
-
-
-      <!-- MOBILE CONTROLS -->
-
-      <div
-        class="touch-controls"
-        aria-hidden="false"
-      >
-
-        <button
-          data-key="left"
-          class="pad-btn"
-          type="button"
-          aria-label="Move left"
-        >
-          ◀
-        </button>
-
-
-        <button
-          data-key="right"
-          class="pad-btn"
-          type="button"
-          aria-label="Move right"
-        >
-          ▶
-        </button>
-
-
-        <button
-          data-key="jump"
-          class="pad-btn action"
-          type="button"
-          aria-label="Jump"
-        >
-          Jump
-        </button>
-
-
-        <button
-          data-key="fire"
-          class="pad-btn action danger"
-          type="button"
-          aria-label="Fire"
-        >
-          Fire
-        </button>
-
-
-        <button
-          data-key="dash"
-          class="pad-btn action"
-          type="button"
-          aria-label="Dash"
-        >
-          Dash
-        </button>
-
-      </div>
-
-    </section>
-
+    <footer class="footer">
+      <span>12 LEVELS</span><span>6 ENEMY TYPES</span><span>5 WEAPONS</span><span>LEVEL-UP SYSTEM</span><span>QUESTS</span>
+    </footer>
   </main>
-
-
-  <!-- ==================== GAME JAVASCRIPT ==================== -->
-
   <script src="game.js"></script>
-
-
-  <!-- ==================== START BUTTON FALLBACK ==================== -->
-
-  <script>
-
-    document.addEventListener(
-      "DOMContentLoaded",
-      function () {
-
-        const startButton =
-          document.getElementById("startBtn");
-
-
-        if (startButton) {
-
-          startButton.onclick = function () {
-
-            if (typeof window.startGame === "function") {
-
-              window.startGame();
-
-            }
-            else if (typeof start === "function") {
-
-              start(
-                0,
-                {
-                  score: 0,
-                  coins: 0,
-                  bestCombo: 0,
-                  weapon: "basic"
-                }
-              );
-
-            }
-            else {
-
-              console.error(
-                "Game start function was not found."
-              );
-
-              const title =
-                document.getElementById("overlayTitle");
-
-              const text =
-                document.getElementById("overlayText");
-
-              if (title) {
-                title.textContent =
-                  "Game Error";
-              }
-
-              if (text) {
-                text.textContent =
-                  "game.js could not be loaded. Make sure game.js is in the same folder as this HTML file.";
-              }
-
-            }
-
-          };
-
-        }
-
-      }
-
-    );
-
-  </script>
-
 </body>
-  </html>
+</html>
